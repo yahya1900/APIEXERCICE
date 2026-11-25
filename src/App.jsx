@@ -310,7 +310,9 @@ function Formulaire({ modification = false }) {
     if (!modification) return undefined;
     let active = true;
     getEtudiant(id)
-      .then(etudiant => { if (active) setForm({ ...initialForm, ...etudiant }); })
+      .then(etudiant => {
+        if (active) setForm(Object.fromEntries(Object.keys(initialForm).map(key => [key, etudiant[key] ?? initialForm[key]])));
+      })
       .catch(() => { if (active) setErreur("Étudiant introuvable ou API indisponible."); })
       .finally(() => { if (active) setChargement(false); });
     return () => { active = false; };
