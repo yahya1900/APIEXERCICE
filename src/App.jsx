@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { getEtudiants, getEtudiant, ajouterEtudiant, modifierEtudiant, supprimerEtudiant } from "./api";
+import { API_URL, getEtudiants, getEtudiant, ajouterEtudiant, modifierEtudiant, supprimerEtudiant } from "./api";
 
 function App() {
   const [connecte, setConnecte] = useState(Boolean(localStorage.getItem("admin")));
@@ -79,8 +79,8 @@ function Accueil() {
 }
 
 function Login({ onLogin }) {
-  const [email, setEmail] = useState("admin@ecole.ma");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [erreur, setErreur] = useState("");
   const navigate = useNavigate();
 
@@ -88,7 +88,7 @@ function Login({ onLogin }) {
     e.preventDefault();
     setErreur("");
     try {
-      const response = await fetch("http://localhost:3001/users");
+      const response = await fetch(`${API_URL}/users`);
       if (!response.ok) throw new Error();
       const users = await response.json();
       const user = users.find(u => u.email === email && u.password === password);
@@ -114,7 +114,6 @@ function Login({ onLogin }) {
         <label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
         <label>Mot de passe</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
         <button className="button button-primary full">Se connecter <span>→</span></button>
-        <small className="demo-info">Démo : admin@ecole.ma / admin123</small>
         <Link to="/" className="back-link">← Retour à l'accueil</Link>
       </form>
     </div>
