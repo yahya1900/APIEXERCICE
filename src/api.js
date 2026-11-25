@@ -1,40 +1,55 @@
 export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/+$/, "");
 
-export async function getEtudiants() {
-  const response = await fetch(`${API_URL}/etudiants`);
-  if (!response.ok) throw new Error("Impossible de charger les étudiants");
-  return response.json();
-}
-
-export async function getEtudiant(id) {
-  const response = await fetch(`${API_URL}/etudiants/${id}`);
-  if (!response.ok) throw new Error("Étudiant introuvable");
-  return response.json();
-}
-
-export async function ajouterEtudiant(etudiant) {
-  const response = await fetch(`${API_URL}/etudiants`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(etudiant)
+async function request(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    credentials: "include",
+    cache: "no-store",
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers,
+    },
   });
-  if (!response.ok) throw new Error("Erreur pendant l'ajout");
+  if (!response.ok) {
+    const error = new Error(`API request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  if (response.status === 204) return null;
   return response.json();
 }
 
-export async function modifierEtudiant(id, etudiant) {
-  const response = await fetch(`${API_URL}/etudiants/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(etudiant)
+export function getSession() {
+  return request("/auth/session").catch(error => {
+    if (error.status === 401) return null;
+    throw error;
   });
-  if (!response.ok) throw new Error("Erreur pendant la modification");
-  return response.json();
 }
 
-export async function supprimerEtudiant(id) {
-  const response = await fetch(`${API_URL}/etudiants/${id}`, {
-    method: "DELETE"
-  });
-  if (!response.ok) throw new Error("Erreur pendant la suppression");
+export function login(email, password) {
+  return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+}
+
+export function logout() {
+  return request("/auth/logout", { method: "POST" });
+}
+
+export function getEtudiants() {
+  return request("/etudiants");
+}
+
+export function getEtudiant(id) {
+  return request(`/etudiants/${encodeURIComponent(id)}`);
+}
+
+export function ajouterEtudiant(etudiant) {
+  return request("/etudiants", { method: "POST", body: JSON.stringify(etudiant) });
+}
+
+export function modifierEtudiant(id, etudiant) {
+  return request(`/etudiants/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(etudiant) });
+}
+
+export function supprimerEtudiant(id) {
+  return request(`/etudiants/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

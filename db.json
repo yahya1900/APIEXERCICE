@@ -1,12 +1,4 @@
 {
-  "users": [
-    {
-      "id": 1,
-      "email": "admin@ecole.ma",
-      "password": "admin123",
-      "name": "Administrateur"
-    }
-  ],
   "etudiants": [
     {
       "id": 1,

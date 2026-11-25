@@ -1,60 +1,56 @@
 # Gestion des étudiants
 
-Application React + Vite avec React Router et JSON Server.
+Application React + Vite pour consulter et gérer les dossiers étudiants, avec une API JSON Server.
 
-## Prérequis
-- Node.js installé
-- npm
+## Installation locale
 
-## Installation
-Ouvrir un terminal dans le dossier du projet puis exécuter :
-
-```bash
+```powershell
 npm install
+Copy-Item .env.example .env
 ```
 
-## Lancement
-Ouvrir **deux terminaux** dans le dossier du projet.
+Modifiez `.env` avant le premier lancement : choisissez un mot de passe administrateur unique de 12 caractères minimum et remplacez `SESSION_SECRET` par une valeur aléatoire longue. Ne publiez jamais `.env` : il est ignoré par Git.
 
-Terminal 1 – démarrer l'API :
-```bash
+Pour générer un secret de session dans PowerShell :
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Ouvrez deux terminaux dans le dossier du projet :
+
+```powershell
 npm run api
 ```
 
-Terminal 2 – démarrer React :
-```bash
+```powershell
 npm run dev
 ```
 
-Ouvrir l'adresse affichée par Vite (généralement http://localhost:5173).
+Ouvrez l’adresse donnée par Vite, généralement http://localhost:5173.
 
-## Connexion de démonstration
-- Email : admin@ecole.ma
-- Mot de passe : admin123
+## Sécurité
 
-## API
-- GET http://localhost:3001/etudiants
-- GET http://localhost:3001/etudiants/1
-- POST http://localhost:3001/etudiants
-- PUT http://localhost:3001/etudiants/1
-- DELETE http://localhost:3001/etudiants/1
-
-Les données sont enregistrées dans `db.json`.
-
-## Build
-```bash
-npm run build
-```
+- Aucun mot de passe administrateur n’est enregistré dans `db.json` ou dans le code du navigateur. Configurez `ADMIN_EMAIL` et `ADMIN_PASSWORD` comme variables d’environnement privées.
+- La connexion crée une session signée dans un cookie `HttpOnly`; l’application ne garde pas de jeton d’accès dans `localStorage`.
+- Les routes de gestion exigent une session, limitent les tentatives de connexion et valident les données reçues.
+- Configurez `APP_ORIGINS` avec les origines exactes autorisées, séparées par des virgules. En local, gardez `http://localhost:5173`.
+- JSON Server convient à une démonstration. Pour des données de production, utilisez une vraie base de données et un backend maintenu.
 
 ## Déploiement
-Le site Vercel et l'API doivent être déployés séparément. JSON Server lancé avec `npm run api` fonctionne sur votre ordinateur, mais n'est pas inclus dans le site construit.
 
-Pour créer l'API sur Render, créez un Blueprint à partir de ce dépôt et validez `render.yaml`. Après le déploiement, vérifiez les adresses `/users` et `/etudiants` sur l'URL Render du service.
+Le site Vercel et l’API sont deux services séparés.
 
-Dans Vercel, définissez la variable `VITE_API_URL` avec l'URL publique Render, sans `/` à la fin, puis redéployez le site. L'exemple `.env.example` sert au développement local.
+1. Dans Render, créez un Blueprint depuis ce dépôt et configurez les valeurs demandées par `render.yaml` : `ADMIN_EMAIL`, `ADMIN_PASSWORD` et `APP_ORIGINS`. La valeur `APP_ORIGINS` doit être l’origine Vercel complète, par exemple `https://mon-projet.vercel.app`, sans barre finale.
+2. Dans Vercel, ajoutez `VITE_API_URL` avec l’URL publique Render, sans barre finale, puis redéployez le site.
+3. Vérifiez `https://<api-render>/health` et `https://<api-render>/auth/session`. La première route doit répondre `200`; la seconde doit répondre `401` avant connexion.
 
-Le projet contient une règle de redirection des routes React pour Netlify et Vercel.
+L’URL `https://jsonplaceholder.typicode.com/users` sert des données utilisateur fictives et publiques, sans authentification ni routes pour les étudiants. Elle ne peut pas remplacer l’API de ce projet.
 
-Limite de la version gratuite : le système de fichiers Render est temporaire. Les changements faits dans `db.json` peuvent être perdus quand le service s'arrête ou redémarre. Ce stockage sert aux démonstrations, pas à conserver durablement les données.
+Le service Render gratuit utilise un système de fichiers temporaire : les modifications de `db.json` peuvent disparaître quand le service s’arrête ou redémarre. Utilisez un stockage persistant pour conserver les modifications.
 
-Note : l'authentification est une démonstration pédagogique côté client. Pour une vraie mise en production, il faut un backend sécurisé avec mots de passe hachés et gestion de sessions/tokens. JSON Server est destiné au développement et aux démonstrations.
+## Build
+
+```powershell
+npm run build
+```

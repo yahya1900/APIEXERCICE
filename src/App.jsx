@@ -1,53 +1,102 @@
-import { useEffect, useState } from "react";
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { API_URL, getEtudiants, getEtudiant, ajouterEtudiant, modifierEtudiant, supprimerEtudiant } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  ajouterEtudiant,
+  getEtudiant,
+  getEtudiants,
+  getSession,
+  login,
+  logout,
+  modifierEtudiant,
+  supprimerEtudiant,
+} from "./api";
+
+const initialForm = {
+  cne: "",
+  nom: "",
+  prenom: "",
+  email: "",
+  telephone: "",
+  filiere: "Développement Digital",
+  niveau: "1ère année",
+  ville: "",
+};
 
 function App() {
-  const [connecte, setConnecte] = useState(Boolean(localStorage.getItem("admin")));
-  function deconnexion() {
-    localStorage.removeItem("admin");
-    setConnecte(false);
-  }
+  const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const location = useLocation();
+
+  useEffect(() => {
+    const path = location.pathname;
+    const needsSession = path === "/login" || path.startsWith("/dashboard") || path.startsWith("/etudiants");
+    if (!needsSession) {
+      setSessionLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setSessionLoading(true);
+    getSession()
+      .then(value => { if (active) setSession(value); })
+      .catch(() => { if (active) setSession(null); })
+      .finally(() => { if (active) setSessionLoading(false); });
+    return () => { active = false; };
+  }, [location.pathname]);
+
+  if (sessionLoading) return <div className="loading-screen" role="status">Chargement de votre session…</div>;
 
   return (
     <Routes>
       <Route path="/" element={<Accueil />} />
-      <Route path="/login" element={connecte ? <Navigate to="/dashboard" /> : <Login onLogin={() => setConnecte(true)} />} />
-      <Route path="/dashboard" element={<Prive connecte={connecte}><Dashboard /></Prive>} />
-      <Route path="/etudiants" element={<Prive connecte={connecte}><Etudiants /></Prive>} />
-      <Route path="/etudiants/ajouter" element={<Prive connecte={connecte}><Formulaire /></Prive>} />
-      <Route path="/etudiants/:id" element={<Prive connecte={connecte}><Details /></Prive>} />
-      <Route path="/etudiants/:id/modifier" element={<Prive connecte={connecte}><Formulaire modification /></Prive>} />
+      <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login onLogin={setSession} />} />
+      <Route path="/dashboard" element={<Prive session={session} onLogout={() => setSession(null)}><Dashboard /></Prive>} />
+      <Route path="/etudiants" element={<Prive session={session} onLogout={() => setSession(null)}><Etudiants /></Prive>} />
+      <Route path="/etudiants/ajouter" element={<Prive session={session} onLogout={() => setSession(null)}><Formulaire /></Prive>} />
+      <Route path="/etudiants/:id" element={<Prive session={session} onLogout={() => setSession(null)}><Details /></Prive>} />
+      <Route path="/etudiants/:id/modifier" element={<Prive session={session} onLogout={() => setSession(null)}><Formulaire modification /></Prive>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
 
-function Prive({ connecte, children }) {
-  return connecte ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+function Prive({ session, onLogout, children }) {
+  return session ? <Layout session={session} onLogout={onLogout}>{children}</Layout> : <Navigate to="/login" replace />;
 }
 
-function Layout({ children }) {
+function Layout({ session, onLogout, children }) {
+  const [sortieEnCours, setSortieEnCours] = useState(false);
+  const [erreur, setErreur] = useState("");
   const navigate = useNavigate();
-  function sortir() {
-    localStorage.removeItem("admin");
-    navigate("/login");
-    window.location.reload();
+
+  async function sortir() {
+    setSortieEnCours(true);
+    setErreur("");
+    try {
+      await logout();
+      onLogout();
+      navigate("/login", { replace: true });
+    } catch {
+      setErreur("La déconnexion a échoué. Réessayez.");
+    } finally {
+      setSortieEnCours(false);
+    }
   }
+
   return (
     <div className="app-layout">
-      <aside className="sidebar">
-        <Link to="/dashboard" className="brand"><span className="brand-icon">É</span><span>EduGestion</span></Link>
+      <aside className="sidebar" aria-label="Navigation principale">
+        <Link to="/dashboard" className="brand"><span className="brand-icon" aria-hidden="true">É</span><span>EduGestion</span></Link>
         <p className="side-label">MENU PRINCIPAL</p>
-        <Link to="/dashboard" className="nav-link">▦ <span>Tableau de bord</span></Link>
-        <Link to="/etudiants" className="nav-link">♙ <span>Étudiants</span></Link>
+        <NavLink to="/dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}><span className="nav-icon" aria-hidden="true">▦</span><span>Tableau de bord</span></NavLink>
+        <NavLink to="/etudiants" end className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}><span className="nav-icon" aria-hidden="true">♙</span><span>Étudiants</span></NavLink>
         <div className="side-bottom">
-          <div className="profile"><div className="avatar">AD</div><div><b>Administrateur</b><small>Gestionnaire</small></div></div>
-          <button className="logout" onClick={sortir}>↪ Déconnexion</button>
+          <div className="profile"><div className="avatar" aria-hidden="true">{session.email.slice(0, 1).toUpperCase()}</div><div><b>Administrateur</b><small>{session.email}</small></div></div>
+          <button className="logout" type="button" onClick={sortir} disabled={sortieEnCours}>{sortieEnCours ? "Déconnexion…" : "Se déconnecter"}</button>
         </div>
       </aside>
       <main className="main-area">
-        <header className="topbar"><span>Administration / <b>Établissement</b></span><span className="top-user">● En ligne</span></header>
+        <header className="topbar"><span>Administration <b>/ Établissement</b></span><span className="top-user"><i aria-hidden="true" /> Connecté</span></header>
+        {erreur && <div className="layout-error" role="alert">{erreur}</div>}
         {children}
       </main>
     </div>
@@ -57,20 +106,23 @@ function Layout({ children }) {
 function Accueil() {
   return (
     <div className="landing">
-      <nav className="landing-nav"><Link to="/" className="brand"><span className="brand-icon">É</span> EduGestion</Link><Link className="button button-light" to="/login">Se connecter</Link></nav>
+      <nav className="landing-nav" aria-label="Navigation du site">
+        <Link to="/" className="brand"><span className="brand-icon" aria-hidden="true">É</span> EduGestion</Link>
+        <Link className="button button-light" to="/login">Se connecter <span aria-hidden="true">→</span></Link>
+      </nav>
       <section className="hero">
         <div className="hero-content">
-          <span className="eyebrow">PLATEFORME DE GESTION SCOLAIRE</span>
-          <h1>La gestion des étudiants, <em>plus simple.</em></h1>
-          <p>Une plateforme claire et pratique pour organiser les informations des étudiants de votre établissement de formation.</p>
-          <Link to="/login" className="button button-primary">Accéder à mon espace <span>→</span></Link>
-          <div className="hero-note">✓ Simple &nbsp; ✓ Rapide &nbsp; ✓ Centralisé</div>
+          <span className="eyebrow">GESTION SCOLAIRE</span>
+          <h1>Les informations de vos étudiants, <em>bien organisées.</em></h1>
+          <p>Un espace simple pour consulter, rechercher et mettre à jour les dossiers de votre établissement.</p>
+          <Link to="/login" className="button button-primary">Accéder à mon espace <span aria-hidden="true">→</span></Link>
+          <div className="hero-note"><span aria-hidden="true">✓</span> Recherche rapide <span aria-hidden="true">✓</span> Dossiers centralisés</div>
         </div>
-        <div className="hero-card">
-          <div className="mock-head"><span>Vue d'ensemble</span><span className="mock-dot">●</span></div>
-          <div className="mock-number">1 248 <small>étudiants inscrits</small></div>
-          <div className="mock-bars"><i style={{height:"42%"}}/><i style={{height:"68%"}}/><i style={{height:"53%"}}/><i style={{height:"85%"}}/><i style={{height:"62%"}}/><i style={{height:"100%"}}/><i style={{height:"76%"}}/></div>
-          <div className="mock-footer"><span>Inscriptions</span><b>+12,8%</b></div>
+        <div className="hero-card" aria-label="Aperçu des fonctionnalités">
+          <div className="mock-head"><span>Votre espace de gestion</span><span className="mock-dot" aria-hidden="true">●</span></div>
+          <div className="mock-title">Tout au même endroit</div>
+          <div className="mock-list"><div><span className="mock-icon blue">♙</span><span><b>Dossiers étudiants</b><small>Consulter et mettre à jour</small></span><b className="mock-arrow">→</b></div><div><span className="mock-icon purple">⌕</span><span><b>Recherche rapide</b><small>Retrouver une inscription</small></span><b className="mock-arrow">→</b></div><div><span className="mock-icon orange">▦</span><span><b>Vue d'ensemble</b><small>Suivre les inscriptions</small></span><b className="mock-arrow">→</b></div></div>
+          <div className="mock-footer"><span>Un outil clair pour votre établissement</span></div>
         </div>
       </section>
       <footer>© 2026 EduGestion · Gestion des étudiants</footer>
@@ -82,106 +134,138 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [erreur, setErreur] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [montrerMotDePasse, setMontrerMotDePasse] = useState(false);
   const navigate = useNavigate();
 
-  async function connecter(e) {
-    e.preventDefault();
+  async function connecter(event) {
+    event.preventDefault();
     setErreur("");
+    setEnvoi(true);
     try {
-      const response = await fetch(`${API_URL}/users`);
-      if (!response.ok) throw new Error();
-      const users = await response.json();
-      const user = users.find(u => u.email === email && u.password === password);
-      if (!user) {
-        setErreur("Email ou mot de passe incorrect.");
-        return;
-      }
-      localStorage.setItem("admin", JSON.stringify({ name: user.name, email: user.email }));
-      onLogin();
-      navigate("/dashboard");
-    } catch {
-      setErreur("API inaccessible. Vérifiez que JSON Server est démarré.");
+      const utilisateur = await login(email.trim(), password);
+      onLogin(utilisateur);
+      navigate("/dashboard", { replace: true });
+    } catch (error) {
+      if (error.status === 401) setErreur("Adresse e-mail ou mot de passe incorrect.");
+      else if (error.status === 429) setErreur("Trop de tentatives. Attendez quelques minutes avant de réessayer.");
+      else setErreur("Connexion impossible. Vérifiez que l’API est disponible.");
+    } finally {
+      setEnvoi(false);
     }
   }
 
   return (
-    <div className="login-page">
-      <Link to="/" className="brand login-brand"><span className="brand-icon">É</span> EduGestion</Link>
+    <main className="login-page">
+      <Link to="/" className="brand login-brand"><span className="brand-icon" aria-hidden="true">É</span> EduGestion</Link>
       <form className="login-card" onSubmit={connecter}>
-        <div className="login-symbol">♙</div>
-        <h1>Bon retour !</h1><p>Connectez-vous à votre espace administrateur.</p>
-        {erreur && <div className="error">{erreur}</div>}
-        <label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-        <label>Mot de passe</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-        <button className="button button-primary full">Se connecter <span>→</span></button>
-        <Link to="/" className="back-link">← Retour à l'accueil</Link>
+        <div className="login-symbol" aria-hidden="true">♙</div>
+        <span className="eyebrow">ESPACE ADMINISTRATEUR</span>
+        <h1>Content de vous revoir</h1>
+        <p>Connectez-vous pour gérer les dossiers de votre établissement.</p>
+        {erreur && <div className="error" role="alert">{erreur}</div>}
+        <label htmlFor="login-email">Adresse e-mail</label>
+        <input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" autoCapitalize="none" maxLength={254} required />
+        <label htmlFor="login-password">Mot de passe</label>
+        <div className="password-field"><input id="login-password" name="password" type={montrerMotDePasse ? "text" : "password"} value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" maxLength={128} required /><button type="button" className="password-toggle" onClick={() => setMontrerMotDePasse(value => !value)} aria-label={montrerMotDePasse ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{montrerMotDePasse ? "Masquer" : "Afficher"}</button></div>
+        <button className="button button-primary full" type="submit" disabled={envoi}>{envoi ? "Connexion…" : "Se connecter"}<span aria-hidden="true">→</span></button>
+        <Link to="/" className="back-link">← Retour à l’accueil</Link>
       </form>
-    </div>
+    </main>
   );
 }
 
-function Dashboard() {
+function useEtudiants() {
   const [etudiants, setEtudiants] = useState([]);
   const [erreur, setErreur] = useState("");
-  useEffect(() => {
-    getEtudiants().then(setEtudiants).catch(() => setErreur("Impossible de charger les données. Vérifiez JSON Server."));
-  }, []);
-  const filieres = [...new Set(etudiants.map(e => e.filiere))].length;
+  const [chargement, setChargement] = useState(true);
+
+  async function charger() {
+    setChargement(true);
+    try {
+      setEtudiants(await getEtudiants());
+      setErreur("");
+    } catch {
+      setErreur("Impossible de charger les étudiants. Vérifiez la connexion à l’API.");
+    } finally {
+      setChargement(false);
+    }
+  }
+
+  useEffect(() => { charger(); }, []);
+  return { etudiants, erreur, chargement, charger };
+}
+
+function Dashboard() {
+  const { etudiants, erreur, chargement } = useEtudiants();
+  const filieres = new Set(etudiants.map(etudiant => etudiant.filiere)).size;
+  const niveaux = new Set(etudiants.map(etudiant => etudiant.niveau)).size;
+
   return (
     <div className="page-content">
-      <div className="page-heading"><div><span className="eyebrow">APERÇU GÉNÉRAL</span><h1>Tableau de bord</h1><p>Bienvenue dans votre espace de gestion.</p></div><Link to="/etudiants/ajouter" className="button button-primary">＋ Ajouter un étudiant</Link></div>
-      {erreur && <div className="error">{erreur}</div>}
-      <div className="stats-grid">
-        <Stat titre="Total étudiants" nombre={etudiants.length} icon="♙" couleur="blue" />
-        <Stat titre="Filières" nombre={filieres} icon="▤" couleur="purple" />
-        <Stat titre="Niveaux" nombre={[...new Set(etudiants.map(e => e.niveau))].length} icon="◎" couleur="orange" />
+      <div className="page-heading"><div><span className="eyebrow">APERÇU GÉNÉRAL</span><h1>Tableau de bord</h1><p>Retrouvez ici un aperçu des inscriptions.</p></div><Link to="/etudiants/ajouter" className="button button-primary"><span aria-hidden="true">＋</span> Ajouter un étudiant</Link></div>
+      {erreur && <div className="error" role="alert">{erreur}</div>}
+      <div className="stats-grid" aria-live="polite">
+        <Stat titre="Étudiants" nombre={chargement ? "—" : etudiants.length} icon="♙" couleur="blue" />
+        <Stat titre="Filières" nombre={chargement ? "—" : filieres} icon="▤" couleur="purple" />
+        <Stat titre="Niveaux" nombre={chargement ? "—" : niveaux} icon="◉" couleur="orange" />
       </div>
-      <section className="panel">
-        <div className="panel-heading"><div><h2>Étudiants récemment ajoutés</h2><p>Aperçu des inscriptions</p></div><Link to="/etudiants" className="text-link">Voir tous →</Link></div>
-        <TableEtudiants etudiants={etudiants.slice(-4).reverse()} />
+      <section className="panel" aria-labelledby="recent-title">
+        <div className="panel-heading"><div><h2 id="recent-title">Ajouts récents</h2><p>Les derniers dossiers enregistrés</p></div><Link to="/etudiants" className="text-link">Voir tous les étudiants <span aria-hidden="true">→</span></Link></div>
+        {chargement ? <p className="empty" role="status">Chargement des dossiers…</p> : <TableEtudiants etudiants={etudiants.slice(-4).reverse()} />}
       </section>
     </div>
   );
 }
 
 function Stat({ titre, nombre, icon, couleur }) {
-  return <div className="stat-card"><div className={`stat-icon ${couleur}`}>{icon}</div><div><p>{titre}</p><strong>{nombre}</strong><small>Enregistré(s)</small></div></div>;
+  return <div className="stat-card"><div className={`stat-icon ${couleur}`} aria-hidden="true">{icon}</div><div><p>{titre}</p><strong>{nombre}</strong><small>Dans l’établissement</small></div></div>;
 }
 
 function Etudiants() {
-  const [etudiants, setEtudiants] = useState([]);
+  const { etudiants, erreur, chargement, charger } = useEtudiants();
   const [recherche, setRecherche] = useState("");
-  const [erreur, setErreur] = useState("");
-  const [chargement, setChargement] = useState(true);
-  async function charger() {
-    try { setEtudiants(await getEtudiants()); setErreur(""); }
-    catch { setErreur("Impossible de charger les étudiants. Vérifiez JSON Server."); }
-    finally { setChargement(false); }
+  const [actionEnCours, setActionEnCours] = useState(false);
+  const [erreurAction, setErreurAction] = useState("");
+  const resultat = useMemo(() => {
+    const query = recherche.trim().toLocaleLowerCase("fr");
+    return etudiants.filter(etudiant => [etudiant.nom, etudiant.prenom, etudiant.cne, etudiant.filiere, etudiant.email].some(value => value?.toLocaleLowerCase("fr").includes(query)));
+  }, [etudiants, recherche]);
+
+  async function supprimer(id, nom) {
+    if (!window.confirm(`Supprimer le dossier de ${nom} ? Cette action est définitive.`)) return;
+    setActionEnCours(true);
+    setErreurAction("");
+    try {
+      await supprimerEtudiant(id);
+      await charger();
+    } catch {
+      setErreurAction("La suppression a échoué. Réessayez.");
+    } finally {
+      setActionEnCours(false);
+    }
   }
-  useEffect(() => { charger(); }, []);
-  async function supprimer(id) {
-    if (!window.confirm("Voulez-vous vraiment supprimer cet étudiant ?")) return;
-    try { await supprimerEtudiant(id); charger(); }
-    catch { setErreur("La suppression a échoué."); }
-  }
-  const resultat = etudiants.filter(e => `${e.nom} ${e.prenom} ${e.cne} ${e.filiere}`.toLowerCase().includes(recherche.toLowerCase()));
+
   return (
     <div className="page-content">
-      <div className="page-heading"><div><span className="eyebrow">BASE DE DONNÉES</span><h1>Liste des étudiants</h1><p>Consultez et gérez les étudiants de votre établissement.</p></div><Link to="/etudiants/ajouter" className="button button-primary">＋ Ajouter un étudiant</Link></div>
-      <section className="panel">
-        <div className="list-toolbar"><div><h2>Tous les étudiants <span className="count">{etudiants.length}</span></h2><p>Liste complète des inscriptions</p></div><input className="search-input" placeholder="⌕  Rechercher un étudiant..." value={recherche} onChange={e => setRecherche(e.target.value)} /></div>
-        {erreur && <div className="error">{erreur}</div>}
-        {chargement ? <p className="empty">Chargement...</p> : <TableEtudiants etudiants={resultat} onDelete={supprimer} />}
-        {!chargement && resultat.length === 0 && <p className="empty">Aucun étudiant trouvé.</p>}
+      <div className="page-heading"><div><span className="eyebrow">INSCRIPTIONS</span><h1>Étudiants</h1><p>Consultez et gérez les dossiers de votre établissement.</p></div><Link to="/etudiants/ajouter" className="button button-primary"><span aria-hidden="true">＋</span> Ajouter un étudiant</Link></div>
+      <section className="panel" aria-labelledby="students-title">
+        <div className="list-toolbar"><div><h2 id="students-title">Tous les dossiers <span className="count">{etudiants.length}</span></h2><p>Recherchez par nom, CNE, filière ou e-mail.</p></div><label className="search-label"><span aria-hidden="true">⌕</span><input className="search-input" type="search" aria-label="Rechercher un étudiant" placeholder="Rechercher…" value={recherche} onChange={event => setRecherche(event.target.value)} /></label></div>
+        {erreur && <div className="error" role="alert">{erreur}</div>}
+        {erreurAction && <div className="error" role="alert">{erreurAction}</div>}
+        {chargement ? <p className="empty" role="status">Chargement des dossiers…</p> : resultat.length ? <TableEtudiants etudiants={resultat} onDelete={supprimer} disabled={actionEnCours} /> : <div className="empty-state"><span aria-hidden="true">⌕</span><h3>{recherche ? "Aucun résultat" : "Aucun dossier pour le moment"}</h3><p>{recherche ? "Essayez avec un autre nom, CNE ou filière." : "Ajoutez un premier étudiant pour commencer."}</p>{!recherche && <Link to="/etudiants/ajouter" className="button button-primary">Ajouter un étudiant</Link>}</div>}
       </section>
     </div>
   );
 }
 
-function TableEtudiants({ etudiants, onDelete }) {
+function TableEtudiants({ etudiants, onDelete, disabled = false }) {
   return (
-    <div className="table-wrap"><table><thead><tr><th>ÉTUDIANT</th><th>CNE</th><th>FILIÈRE</th><th>NIVEAU</th><th>VILLE</th><th>ACTIONS</th></tr></thead>
-      <tbody>{etudiants.map(e => <tr key={e.id}><td><div className="student-cell"><div className="student-avatar">{e.prenom?.[0]}{e.nom?.[0]}</div><div><b>{e.prenom} {e.nom}</b><small>{e.email}</small></div></div></td><td>{e.cne}</td><td>{e.filiere}</td><td><span className="level">{e.niveau}</span></td><td>{e.ville}</td><td><div className="actions"><Link title="Détails" to={`/etudiants/${e.id}`}>Voir</Link><Link title="Modifier" to={`/etudiants/${e.id}/modifier`}>Modifier</Link>{onDelete && <button title="Supprimer" onClick={() => onDelete(e.id)}>Supprimer</button>}</div></td></tr>)}</tbody>
+    <div className="table-wrap"><table><thead><tr><th scope="col">ÉTUDIANT</th><th scope="col">CNE</th><th scope="col">FILIÈRE</th><th scope="col">NIVEAU</th><th scope="col">VILLE</th>{onDelete && <th scope="col">ACTIONS</th>}</tr></thead>
+      <tbody>{etudiants.map(etudiant => {
+        const nomComplet = `${etudiant.prenom || ""} ${etudiant.nom || ""}`.trim() || "Étudiant";
+        return <tr key={etudiant.id}><td><div className="student-cell"><div className="student-avatar" aria-hidden="true">{etudiant.prenom?.[0]}{etudiant.nom?.[0]}</div><div><b>{nomComplet}</b><small>{etudiant.email}</small></div></div></td><td>{etudiant.cne}</td><td>{etudiant.filiere}</td><td><span className="level">{etudiant.niveau}</span></td><td>{etudiant.ville || "—"}</td>{onDelete && <td><div className="actions"><Link to={`/etudiants/${etudiant.id}`} aria-label={`Voir le dossier de ${nomComplet}`}>Voir</Link><Link to={`/etudiants/${etudiant.id}/modifier`} aria-label={`Modifier le dossier de ${nomComplet}`}>Modifier</Link><button type="button" disabled={disabled} onClick={() => onDelete(etudiant.id, nomComplet)} aria-label={`Supprimer le dossier de ${nomComplet}`}>Supprimer</button></div></td>}</tr>;
+      })}</tbody>
     </table></div>
   );
 }
@@ -189,16 +273,26 @@ function TableEtudiants({ etudiants, onDelete }) {
 function Details() {
   const { id } = useParams();
   const [etudiant, setEtudiant] = useState(null);
+  const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState("");
-  useEffect(() => { getEtudiant(id).then(setEtudiant).catch(() => setErreur("Étudiant introuvable.")); }, [id]);
-  if (erreur) return <div className="page-content"><div className="error">{erreur}</div><Link to="/etudiants" className="text-link">← Retour à la liste</Link></div>;
-  if (!etudiant) return <div className="page-content">Chargement...</div>;
+
+  useEffect(() => {
+    let active = true;
+    getEtudiant(id).then(value => { if (active) setEtudiant(value); }).catch(() => { if (active) setErreur("Étudiant introuvable ou API indisponible."); }).finally(() => { if (active) setChargement(false); });
+    return () => { active = false; };
+  }, [id]);
+
+  if (chargement) return <div className="page-content"><p className="empty" role="status">Chargement du dossier…</p></div>;
+  if (erreur || !etudiant) return <div className="page-content"><div className="error" role="alert">{erreur}</div><Link to="/etudiants" className="text-link">← Retour à la liste</Link></div>;
+  const initiales = `${etudiant.prenom?.[0] || ""}${etudiant.nom?.[0] || ""}`;
+  const details = [["CNE", etudiant.cne], ["E-mail", etudiant.email], ["Téléphone", etudiant.telephone], ["Filière", etudiant.filiere], ["Niveau", etudiant.niveau], ["Ville", etudiant.ville]];
+
   return (
     <div className="page-content">
-      <Link to="/etudiants" className="back-link">← Retour à la liste</Link>
-      <div className="page-heading"><div><span className="eyebrow">FICHE ÉTUDIANT</span><h1>Détails de l'étudiant</h1><p>Informations personnelles et scolaires.</p></div><Link to={`/etudiants/${id}/modifier`} className="button button-primary">Modifier</Link></div>
-      <section className="panel detail-panel"><div className="detail-person"><div className="big-avatar">{etudiant.prenom[0]}{etudiant.nom[0]}</div><div><h2>{etudiant.prenom} {etudiant.nom}</h2><p>{etudiant.filiere}</p><span className="level">{etudiant.niveau}</span></div></div>
-        <div className="detail-grid">{[["CNE",etudiant.cne],["Email",etudiant.email],["Téléphone",etudiant.telephone],["Filière",etudiant.filiere],["Niveau",etudiant.niveau],["Ville",etudiant.ville]].map(([k,v]) => <div className="detail-item" key={k}><small>{k}</small><b>{v || "Non renseigné"}</b></div>)}</div>
+      <Link to="/etudiants" className="back-link">← Retour aux étudiants</Link>
+      <div className="page-heading"><div><span className="eyebrow">DOSSIER ÉTUDIANT</span><h1>{etudiant.prenom} {etudiant.nom}</h1><p>Informations personnelles et scolaires.</p></div><Link to={`/etudiants/${id}/modifier`} className="button button-primary">Modifier le dossier</Link></div>
+      <section className="panel detail-panel"><div className="detail-person"><div className="big-avatar" aria-hidden="true">{initiales}</div><div><h2>{etudiant.prenom} {etudiant.nom}</h2><p>{etudiant.filiere}</p><span className="level">{etudiant.niveau}</span></div></div>
+        <dl className="detail-grid">{details.map(([label, value]) => <div className="detail-item" key={label}><dt>{label}</dt><dd>{value || "Non renseigné"}</dd></div>)}</dl>
       </section>
     </div>
   );
@@ -207,47 +301,68 @@ function Details() {
 function Formulaire({ modification = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ cne:"", nom:"", prenom:"", email:"", telephone:"", filiere:"Développement Digital", niveau:"1ère année", ville:"" });
+  const [form, setForm] = useState(initialForm);
   const [erreur, setErreur] = useState("");
   const [chargement, setChargement] = useState(modification);
+  const [envoi, setEnvoi] = useState(false);
+
   useEffect(() => {
-    if (modification) getEtudiant(id).then(e => setForm({ cne:e.cne || "", nom:e.nom || "", prenom:e.prenom || "", email:e.email || "", telephone:e.telephone || "", filiere:e.filiere || "Développement Digital", niveau:e.niveau || "1ère année", ville:e.ville || "" })).catch(() => setErreur("Étudiant introuvable.")).finally(() => setChargement(false));
+    if (!modification) return undefined;
+    let active = true;
+    getEtudiant(id)
+      .then(etudiant => { if (active) setForm({ ...initialForm, ...etudiant }); })
+      .catch(() => { if (active) setErreur("Étudiant introuvable ou API indisponible."); })
+      .finally(() => { if (active) setChargement(false); });
+    return () => { active = false; };
   }, [id, modification]);
-  function changer(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
-  async function envoyer(e) {
-    e.preventDefault(); setErreur("");
-    try {
-      if (modification) await modifierEtudiant(id, form);
-      else await ajouterEtudiant(form);
-      navigate("/etudiants");
-    } catch { setErreur("Une erreur est survenue. Vérifiez que JSON Server fonctionne."); }
+
+  function changer(event) {
+    setForm(current => ({ ...current, [event.target.name]: event.target.value }));
   }
-  if (chargement) return <div className="page-content">Chargement...</div>;
+
+  async function envoyer(event) {
+    event.preventDefault();
+    setErreur("");
+    setEnvoi(true);
+    const donnees = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()]));
+    try {
+      if (modification) await modifierEtudiant(id, donnees);
+      else await ajouterEtudiant(donnees);
+      navigate("/etudiants", { replace: true });
+    } catch {
+      setErreur("Enregistrement impossible. Vérifiez les champs et réessayez.");
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  if (chargement) return <div className="page-content"><p className="empty" role="status">Chargement du dossier…</p></div>;
+
   return (
     <div className="page-content">
-      <Link to="/etudiants" className="back-link">← Retour à la liste</Link>
-      <div className="page-heading"><div><span className="eyebrow">GESTION DES INSCRIPTIONS</span><h1>{modification ? "Modifier un étudiant" : "Ajouter un étudiant"}</h1><p>Remplissez les informations ci-dessous.</p></div></div>
+      <Link to="/etudiants" className="back-link">← Retour aux étudiants</Link>
+      <div className="page-heading"><div><span className="eyebrow">GESTION DES INSCRIPTIONS</span><h1>{modification ? "Modifier un étudiant" : "Ajouter un étudiant"}</h1><p>Les champs marqués d’un astérisque sont obligatoires.</p></div></div>
       <form className="panel student-form" onSubmit={envoyer}>
-        {erreur && <div className="error">{erreur}</div>}
-        <h2>Informations de l'étudiant</h2>
+        {erreur && <div className="error" role="alert">{erreur}</div>}
+        <h2>Informations de l’étudiant</h2>
         <div className="form-grid">
-          <div><label>CNE *</label><input name="cne" value={form.cne} onChange={changer} required placeholder="Ex : R130005" /></div>
-          <div><label>Nom *</label><input name="nom" value={form.nom} onChange={changer} required placeholder="Nom de famille" /></div>
-          <div><label>Prénom *</label><input name="prenom" value={form.prenom} onChange={changer} required placeholder="Prénom" /></div>
-          <div><label>Email *</label><input type="email" name="email" value={form.email} onChange={changer} required placeholder="exemple@email.com" /></div>
-          <div><label>Téléphone</label><input name="telephone" value={form.telephone} onChange={changer} placeholder="06XXXXXXXX" /></div>
-          <div><label>Ville</label><input name="ville" value={form.ville} onChange={changer} placeholder="Ville" /></div>
-          <div><label>Filière *</label><select name="filiere" value={form.filiere} onChange={changer}><option>Développement Digital</option><option>Gestion des entreprises</option><option>Infrastructure digitale</option><option>Comptabilité</option><option>Commerce</option></select></div>
-          <div><label>Niveau *</label><select name="niveau" value={form.niveau} onChange={changer}><option>1ère année</option><option>2ème année</option><option>3ème année</option></select></div>
+          <div><label htmlFor="student-cne">CNE <span aria-hidden="true">*</span></label><input id="student-cne" name="cne" value={form.cne} onChange={changer} required minLength={3} maxLength={30} autoComplete="off" placeholder="Ex. R130005" /></div>
+          <div><label htmlFor="student-nom">Nom <span aria-hidden="true">*</span></label><input id="student-nom" name="nom" value={form.nom} onChange={changer} required maxLength={100} autoComplete="family-name" placeholder="Nom de famille" /></div>
+          <div><label htmlFor="student-prenom">Prénom <span aria-hidden="true">*</span></label><input id="student-prenom" name="prenom" value={form.prenom} onChange={changer} required maxLength={100} autoComplete="given-name" placeholder="Prénom" /></div>
+          <div><label htmlFor="student-email">E-mail <span aria-hidden="true">*</span></label><input id="student-email" type="email" name="email" value={form.email} onChange={changer} required maxLength={254} autoComplete="email" placeholder="exemple@ecole.ma" /></div>
+          <div><label htmlFor="student-phone">Téléphone</label><input id="student-phone" type="tel" name="telephone" value={form.telephone} onChange={changer} maxLength={30} autoComplete="tel" placeholder="06 12 34 56 78" /></div>
+          <div><label htmlFor="student-city">Ville</label><input id="student-city" name="ville" value={form.ville} onChange={changer} maxLength={100} autoComplete="address-level2" placeholder="Ville" /></div>
+          <div><label htmlFor="student-track">Filière <span aria-hidden="true">*</span></label><select id="student-track" name="filiere" value={form.filiere} onChange={changer} required><option>Développement Digital</option><option>Gestion des entreprises</option><option>Infrastructure digitale</option><option>Comptabilité</option><option>Commerce</option></select></div>
+          <div><label htmlFor="student-level">Niveau <span aria-hidden="true">*</span></label><select id="student-level" name="niveau" value={form.niveau} onChange={changer} required><option>1ère année</option><option>2ème année</option><option>3ème année</option></select></div>
         </div>
-        <div className="form-actions"><Link to="/etudiants" className="button button-light">Annuler</Link><button className="button button-primary" type="submit">{modification ? "Enregistrer les modifications" : "Ajouter l'étudiant"}</button></div>
+        <div className="form-actions"><Link to="/etudiants" className="button button-light">Annuler</Link><button className="button button-primary" type="submit" disabled={envoi}>{envoi ? "Enregistrement…" : modification ? "Enregistrer les modifications" : "Ajouter l’étudiant"}</button></div>
       </form>
     </div>
   );
 }
 
 function NotFound() {
-  return <div className="not-found"><h1>404</h1><p>Cette page n'existe pas.</p><Link to="/" className="button button-primary">Retour à l'accueil</Link></div>;
+  return <main className="not-found"><span className="eyebrow">PAGE INTROUVABLE</span><h1>404</h1><p>Cette page n’existe pas ou a été déplacée.</p><Link to="/" className="button button-primary">Retour à l’accueil</Link></main>;
 }
 
 export default App;
