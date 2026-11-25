@@ -1,0 +1,56 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "admin@ecole.ma",
+      "password": "admin123",
+      "name": "Administrateur"
+    }
+  ],
+  "etudiants": [
+    {
+      "id": 1,
+      "cne": "R130001",
+      "nom": "Amrani",
+      "prenom": "Youssef",
+      "email": "youssef.amrani@email.com",
+      "telephone": "0612345678",
+      "filiere": "Développement Digital",
+      "niveau": "2ème année",
+      "ville": "Casablanca"
+    },
+    {
+      "id": 2,
+      "cne": "R130002",
+      "nom": "Bennani",
+      "prenom": "Salma",
+      "email": "salma.bennani@email.com",
+      "telephone": "0623456789",
+      "filiere": "Gestion des entreprises",
+      "niveau": "1ère année",
+      "ville": "Rabat"
+    },
+    {
+      "id": 3,
+      "cne": "R130003",
+      "nom": "Alaoui",
+      "prenom": "Omar",
+      "email": "omar.alaoui@email.com",
+      "telephone": "0634567890",
+      "filiere": "Infrastructure digitale",
+      "niveau": "2ème année",
+      "ville": "Marrakech"
+    },
+    {
+      "id": 4,
+      "cne": "R130004",
+      "nom": "Idrissi",
+      "prenom": "Nour",
+      "email": "nour.idrissi@email.com",
+      "telephone": "0645678901",
+      "filiere": "Développement Digital",
+      "niveau": "1ère année",
+      "ville": "Fès"
+    }
+  ]
+}
